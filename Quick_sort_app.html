@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Praxis Auto Sorter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .file-drop-zone { border: 2px dashed #cbd5e1; transition: background-color 0.2s ease, border-color 0.2s ease; }
+        .file-drop-zone.dragover { background-color: #f1f5f9; border-color: #94a3b8; }
+        .step-section { display: none; }
+        .step-section.active { display: block; }
+        .table-container { max-height: 60vh; overflow-y: auto; }
+        table th { cursor: pointer; user-select: none; }
+        table th:hover { background-color: #e2e8f0; }
+        .table-row.selected { background-color: #dbeafe; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-slate-900">Praxis Auto Sorter</h1>
+            <p class="text-lg text-slate-600 mt-2">Automate matching instructors to courses and generating Praxis LTI JSON files.</p>
+        </header>
+
+        <!-- Step 0: Run Configuration -->
+        <div id="step0" class="step-section active bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl font-semibold mb-4 text-slate-900 border-b pb-3">Step 0: Configure Run & View History</h2>
+            <div class="grid md:grid-cols-2 gap-8">
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-800 mb-3">Start New Provisioning Run</h3>
+                    <label for="runName" class="block text-sm font-medium text-slate-700">Run Name</label>
+                    <input type="text" id="runName" class="mt-1 block w-full border-slate-300 rounded-md shadow-sm" placeholder="e.g., Fall 2025 Quarter">
+                    <div id="runName-message" class="hidden my-2 p-2 bg-red-100 border-red-400 text-red-700 rounded-lg text-sm"></div>
+                    <button id="startNewRunBtn" class="mt-4 w-full bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg shadow-md hover:bg-indigo-700">Start New Run</button>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-slate-800 mb-3">Run History</h3>
+                    <div id="run-history-container" class="space-y-2 max-h-60 overflow-y-auto border p-4 rounded-md"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 1: File Upload -->
+        <div id="step1" class="step-section bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl font-semibold mb-4 text-slate-900 border-b pb-3">Step 1: Upload Your CSV Files</h2>
+            <div class="grid md:grid-cols-4 gap-6 pt-4">
+                <div id="drop-zone-enrollments" class="file-drop-zone rounded-lg p-6 text-center cursor-pointer"><label for="enrollmentsFile" class="flex flex-col items-center"><span class="font-medium text-slate-700">Enrollments CSV</span><span id="enrollments-file-name" class="text-sm text-slate-500 mt-1">Click or drag</span></label><input type="file" id="enrollmentsFile" class="hidden" accept=".csv"></div>
+                <div id="drop-zone-courses" class="file-drop-zone rounded-lg p-6 text-center cursor-pointer"><label for="coursesFile" class="flex flex-col items-center"><span class="font-medium text-slate-700">Courses CSV</span><span id="courses-file-name" class="text-sm text-slate-500 mt-1">Click or drag</span></label><input type="file" id="coursesFile" class="hidden" accept=".csv"></div>
+                <div id="drop-zone-users" class="file-drop-zone rounded-lg p-6 text-center cursor-pointer"><label for="usersFile" class="flex flex-col items-center"><span class="font-medium text-slate-700">Users CSV</span><span id="users-file-name" class="text-sm text-slate-500 mt-1">Click or drag</span></label><input type="file" id="usersFile" class="hidden" accept=".csv"></div>
+                <div id="drop-zone-bots" class="file-drop-zone rounded-lg p-6 text-center cursor-pointer"><label for="botsFile" class="flex flex-col items-center"><span class="font-medium text-slate-700">Bots CSV</span><span id="bots-file-name" class="text-sm text-slate-500 mt-1">Click or drag</span></label><input type="file" id="botsFile" class="hidden" accept=".csv"></div>
+            </div>
+            <div class="mt-8 flex justify-between"><button id="prevStep1Btn" class="bg-slate-200 font-bold py-3 px-8 rounded-lg">Back</button><button id="nextStep1Btn" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg" disabled>Next: Map Columns</button></div>
+        </div>
+
+        <!-- Step 2: Column Mapping -->
+        <div id="step2" class="step-section bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl font-semibold">Step 2: Map CSV Columns</h2>
+            <p class="text-slate-600 mt-2">Default values have been pre-selected based on standard Canvas report formats. You can proceed with these defaults unless your CSV files use different column names.</p>
+            <div id="column-mapping-container" class="space-y-6 mt-4"></div>
+            <div id="mapping-message" class="hidden my-4 p-3 bg-red-100 border-red-400 text-red-700"></div>
+            <div class="mt-8 flex justify-between"><button id="prevStep2Btn" class="bg-slate-200 font-bold py-3 px-8 rounded-lg">Back</button><button id="nextStep2Btn" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg">Next: Select Roles</button></div>
+        </div>
+
+        <!-- Step 3: Role Selection -->
+        <div id="step3" class="step-section bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl font-semibold">Step 3: Select Instructor Roles</h2>
+            <div id="role-selection-container" class="space-y-2 my-6 max-h-60 overflow-y-auto border p-4"></div>
+            <div id="role-message" class="hidden my-4 p-3 bg-red-100 border-red-400 text-red-700"></div>
+            <div class="mt-8 flex justify-between"><button id="prevStep3Btn" class="bg-slate-200 font-bold py-3 px-8 rounded-lg">Back</button><button id="nextStep3Btn" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg">Next: Assign Instructors</button></div>
+        </div>
+
+        <!-- Step 4: Assign Instructors -->
+        <div id="step4" class="step-section bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl font-semibold">Step 4: Assign Instructors</h2>
+            <div class="grid grid-cols-12 gap-4 mt-4">
+                <div class="col-span-5">
+                    <h3 class="font-semibold">Unassigned Instructors</h3>
+                    <div class="grid grid-cols-2 gap-2 mt-2">
+                        <input type="text" id="filter-instructor-name" placeholder="Filter by instructor name..." class="px-3 py-2 border rounded-md text-sm">
+                        <input type="text" id="filter-course-name" placeholder="Filter by course name..." class="px-3 py-2 border rounded-md text-sm">
+                    </div>
+                    <div class="table-container border rounded-lg mt-2">
+                        <table class="min-w-full divide-y divide-slate-200">
+                            <thead class="bg-slate-50 sticky top-0"><tr>
+                                <th class="px-4 py-2"><input type="checkbox" id="select-all-unassigned"></th>
+                                <th data-sort="user_name" class="px-4 py-2 text-left text-xs font-medium">Instructor Name</th>
+                                <th data-sort="course_name" class="px-4 py-2 text-left text-xs font-medium">Course</th>
+                            </tr></thead>
+                            <tbody id="unassigned-table-body" class="bg-white divide-y"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-span-2 flex flex-col items-center justify-center gap-4">
+                    <button id="assign-btn" class="w-full bg-blue-500 text-white p-2 rounded-lg">Assign &rarr;</button>
+                    <button id="unassign-btn" class="w-full bg-gray-500 text-white p-2 rounded-lg">&larr; Unassign</button>
+                </div>
+                <div class="col-span-5">
+                    <label for="bot-assignment-dropdown" class="font-semibold">Active Bot for Assignment</label>
+                    <select id="bot-assignment-dropdown" class="w-full rounded-md mt-2"></select>
+                    <div id="assigned-groups-container" class="table-container border rounded-lg mt-2 p-2 space-y-4"></div>
+                </div>
+            </div>
+            <div class="mt-8 flex justify-between"><button id="prevStep4Btn" class="bg-slate-200 font-bold py-3 px-8 rounded-lg">Back</button><button id="nextStep4Btn" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg">Next: Generate JSON</button></div>
+        </div>
+
+        <!-- Step 5: Generate and Download -->
+        <div id="step5" class="step-section bg-white p-6 rounded-lg shadow-md">
+            <div class="flex justify-between items-center">
+                <h2 class="text-2xl font-semibold">Step 5: Generate & Download JSON</h2>
+                <button id="downloadAllBtn" class="bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700">Download All JSONs</button>
+            </div>
+            <div id="json-output-container" class="pt-4 grid md:grid-cols-2 gap-6"></div>
+            <div class="mt-8 flex justify-between">
+                <button id="prevStep5Btn" class="bg-slate-200 font-bold py-3 px-8 rounded-lg">Back</button>
+                <div class="flex gap-4">
+                    <button id="saveRunBtn" class="bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700">Save Run</button>
+                    <button id="startOverBtn" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg">Start Over</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center"><div class="text-white text-2xl">Processing...</div></div>
+        <div id="message" class="hidden fixed top-5 right-5 p-4 rounded-lg shadow-lg"></div>
+    </div>
+
+    <script>
+        // --- State Management ---
+        const state = {
+            files: { enrollments: null, courses: null, users: null, bots: null },
+            csvHeaders: { enrollments: [], courses: [], users: [], bots: [] },
+            parsedData: { enrollments: [], courses: [], users: [], bots: [] },
+            columnMap: {},
+            instructorRoles: [],
+            unassignedEnrollments: [],
+            assignments: {}, // { botName: [enrollment, enrollment] }
+            botList: [],
+            currentRunName: '',
+            currentStep: 0,
+            sort: { key: 'user_name', order: 'asc' },
+            lastSelectedRow: null,
+            filters: { instructorName: '', courseName: '' },
+            // Auto-save and resume fields
+            currentRunId: null,
+            isResuming: false,
+            saveInProgress: false,
+            pendingSave: false,
+        };
+
+        // --- DOM Elements ---
+        const dom = {
+            steps: document.querySelectorAll('.step-section'),
+            loading: document.getElementById('loading'),
+            message: document.getElementById('message'),
+            runNameInput: document.getElementById('runName'),
+            runNameMessage: document.getElementById('runName-message'),
+            startNewRunBtn: document.getElementById('startNewRunBtn'),
+            runHistoryContainer: document.getElementById('run-history-container'),
+            fileInputs: {
+                enrollments: document.getElementById('enrollmentsFile'),
+                courses: document.getElementById('coursesFile'),
+                users: document.getElementById('usersFile'),
+                bots: document.getElementById('botsFile'),
+            },
+            nextStep1Btn: document.getElementById('nextStep1Btn'),
+            prevStep1Btn: document.getElementById('prevStep1Btn'),
+            columnMappingContainer: document.getElementById('column-mapping-container'),
+            mappingMessage: document.getElementById('mapping-message'),
+            prevStep2Btn: document.getElementById('prevStep2Btn'),
+            nextStep2Btn: document.getElementById('nextStep2Btn'),
+            roleSelectionContainer: document.getElementById('role-selection-container'),
+            roleMessage: document.getElementById('role-message'),
+            prevStep3Btn: document.getElementById('prevStep3Btn'),
+            nextStep3Btn: document.getElementById('nextStep3Btn'),
+            unassignedTableBody: document.getElementById('unassigned-table-body'),
+            botAssignmentDropdown: document.getElementById('bot-assignment-dropdown'),
+            assignBtn: document.getElementById('assign-btn'),
+            unassignBtn: document.getElementById('unassign-btn'),
+            assignedGroupsContainer: document.getElementById('assigned-groups-container'),
+            prevStep4Btn: document.getElementById('prevStep4Btn'),
+            nextStep4Btn: document.getElementById('nextStep4Btn'),
+            jsonOutputContainer: document.getElementById('json-output-container'),
+            prevStep5Btn: document.getElementById('prevStep5Btn'),
+            startOverBtn: document.getElementById('startOverBtn'),
+        };
+
+        // --- Navigation ---
+        function navigateToStep(step) {
+            dom.steps.forEach(s => s.classList.remove('active'));
+            const stepEl = document.getElementById(`step${step}`);
+            if (stepEl) stepEl.classList.add('active');
+            state.currentStep = step;
+            window.scrollTo(0, 0);
+        }
+
+        // --- Messaging ---
+        function showMessage(msg, isError = true, target = dom.message) {
+            target.textContent = msg;
+            target.className = `my-4 p-3 rounded-lg ${isError ? 'bg-red-100 border-red-400 text-red-700' : 'bg-green-100 border-green-400 text-green-700'}`;
+            target.classList.remove('hidden');
+        }
+        function hideMessage(target = dom.message) { target.classList.add('hidden'); }
+
+        // --- Toast Notifications ---
+        function showToast(message, isError = false, duration = 3000) {
+            const toast = dom.message;
+            toast.textContent = message;
+            toast.className = `fixed top-5 right-5 p-4 rounded-lg shadow-lg z-50 ${
+                isError ? 'bg-red-100 border border-red-400 text-red-700' : 'bg-green-100 border border-green-400 text-green-700'
+            }`;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), duration);
+        }
+
+        // --- Debounce Utility ---
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // --- Auto-Save Functions ---
+        async function autoSave() {
+            if (!state.currentRunId || state.saveInProgress) {
+                state.pendingSave = true;
+                return;
+            }
+
+            state.saveInProgress = true;
+
+            // Only save small metadata - CSV files uploaded separately, unassignedEnrollments recomputed on resume
+            const savePayload = {
+                currentStep: state.currentStep,
+                columnMap: state.columnMap,
+                instructorRoles: state.instructorRoles,
+                // NOTE: unassignedEnrollments is NOT saved - it's recomputed from CSV files on resume
+                assignments: state.assignments,
+                botList: state.botList,
+            };
+
+            try {
+                const response = await fetch(`/api/runs/${state.currentRunId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(savePayload)
+                });
+
+                if (!response.ok) throw new Error('Save failed');
+            } catch (error) {
+                console.error('Auto-save failed:', error);
+                showToast('Failed to save progress. Will retry...', true);
+                // Retry after 5 seconds
+                setTimeout(() => {
+                    if (state.currentRunId) autoSave();
+                }, 5000);
+            } finally {
+                state.saveInProgress = false;
+                if (state.pendingSave) {
+                    state.pendingSave = false;
+                    autoSave();
+                }
+            }
+        }
+
+        const debouncedAutoSave = debounce(autoSave, 500);
+
+        async function immediateSave() {
+            state.pendingSave = false;
+            return autoSave();
+        }
+
+        // Upload CSV files to server
+        async function uploadCsvFiles() {
+            const formData = new FormData();
+            formData.append('enrollments', state.files.enrollments);
+            formData.append('courses', state.files.courses);
+            formData.append('users', state.files.users);
+            formData.append('bots', state.files.bots);
+
+            const response = await fetch(`/api/runs/${state.currentRunId}/files`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error('Failed to upload files');
+            return response.json();
+        }
+
+        // Fetch and parse CSV files from server (for resume)
+        async function loadCsvFilesFromServer(runId) {
+            const fileTypes = ['enrollments', 'courses', 'users', 'bots'];
+
+            for (const type of fileTypes) {
+                const response = await fetch(`/api/runs/${runId}/files/${type}.csv`);
+                if (!response.ok) throw new Error(`Failed to load ${type}.csv`);
+
+                const csvText = await response.text();
+                const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+                if (parsed.errors.length) throw new Error(`Error parsing ${type}.csv`);
+
+                state.parsedData[type] = parsed.data;
+                state.csvHeaders[type] = parsed.meta.fields;
+            }
+        }
+
+        // --- API Communication ---
+        async function loadRunHistory() {
+            try {
+                const response = await fetch('/api/runs');
+                if (!response.ok) throw new Error('Failed to load history');
+                const runs = await response.json();
+                dom.runHistoryContainer.innerHTML = runs.length ? '' : '<p class="text-slate-500">No history found.</p>';
+                runs.forEach(run => {
+                    const el = document.createElement('div');
+                    el.className = 'flex items-center justify-between p-2 border rounded-md hover:bg-slate-50';
+
+                    const isCompleted = run.status === 'completed';
+                    const statusBadge = isCompleted
+                        ? '<span class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">Completed</span>'
+                        : `<span class="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">In Progress (Step ${run.currentStep})</span>`;
+
+                    const actionButton = isCompleted
+                        ? ''
+                        : `<button class="resume-btn text-sm text-indigo-600 hover:text-indigo-800 font-medium" data-run-id="${run.id}">Resume</button>`;
+
+                    el.innerHTML = `
+                        <div class="flex-1">
+                            <div class="font-medium text-sm">${run.runName}</div>
+                            <div class="text-xs text-slate-500">${new Date(run.updatedAt || run.createdAt).toLocaleString()}</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            ${statusBadge}
+                            ${actionButton}
+                        </div>
+                    `;
+                    dom.runHistoryContainer.appendChild(el);
+                });
+
+                // Add event delegation for resume buttons
+                dom.runHistoryContainer.onclick = (e) => {
+                    if (e.target.classList.contains('resume-btn')) {
+                        const runId = parseInt(e.target.dataset.runId);
+                        resumeRun(runId);
+                    }
+                };
+            } catch (error) {
+                dom.runHistoryContainer.innerHTML = '<p class="text-red-500">Could not load history.</p>';
+            }
+        }
+
+        // --- Resume Run Functions ---
+        async function resumeRun(runId) {
+            dom.loading.classList.remove('hidden');
+
+            try {
+                // Fetch run metadata from database
+                const response = await fetch(`/api/runs/${runId}`);
+                if (!response.ok) throw new Error('Failed to load run');
+
+                const runData = await response.json();
+
+                // Restore state from database
+                state.currentRunId = runData.id;
+                state.currentRunName = runData.runName;
+                state.currentStep = runData.currentStep;
+                state.isResuming = true;
+
+                // Restore metadata from DB (unassignedEnrollments is NOT saved - recomputed below)
+                if (runData.columnMap) state.columnMap = JSON.parse(runData.columnMap);
+                if (runData.instructorRoles) state.instructorRoles = JSON.parse(runData.instructorRoles);
+                if (runData.assignments) state.assignments = JSON.parse(runData.assignments);
+                if (runData.botList) state.botList = JSON.parse(runData.botList);
+
+                // Fetch CSV files from server (if we're past Step 1)
+                if (runData.currentStep >= 2) {
+                    await loadCsvFilesFromServer(runId);
+                }
+
+                // Recompute unassignedEnrollments for Step 4+ (it's not saved - too large)
+                if (runData.currentStep >= 4) {
+                    // Process CSV data to get ALL instructor enrollments
+                    processInitialData();
+
+                    // Subtract already-assigned enrollments
+                    const assignedIds = new Set();
+                    Object.values(state.assignments).forEach(items => {
+                        items.forEach(item => assignedIds.add(item.enrollment_id));
+                    });
+                    state.unassignedEnrollments = state.unassignedEnrollments.filter(
+                        item => !assignedIds.has(item.enrollment_id)
+                    );
+                }
+
+                // Navigate to the saved step and render UI
+                await restoreUIForStep(runData.currentStep);
+                navigateToStep(runData.currentStep);
+
+                showToast(`Resumed "${runData.runName}" at Step ${runData.currentStep}`, false);
+
+            } catch (error) {
+                console.error('Failed to resume run:', error);
+                showToast('Failed to resume run: ' + error.message, true);
+            } finally {
+                dom.loading.classList.add('hidden');
+                state.isResuming = false;
+            }
+        }
+
+        async function restoreUIForStep(step) {
+            // Restore UI elements based on which step we're resuming to
+            if (step >= 1) {
+                // Step 1: Show file upload state (files are locked when resuming)
+                updateFileUploadUIForResume();
+            }
+            if (step >= 2) {
+                // Step 2: Render column mapping dropdowns with saved values
+                renderColumnMappings();
+                restoreColumnMappingSelections();
+            }
+            if (step >= 3) {
+                // Step 3: Render role selection with saved selections
+                renderRoleSelection();
+                restoreRoleSelections();
+            }
+            if (step >= 4) {
+                // Step 4: Render assignment tables with saved data
+                renderBotDropdown();
+                renderUnassignedTable();
+                renderAssignedGroups();
+            }
+            if (step >= 5) {
+                // Step 5: Render JSON output
+                renderJsonOutput();
+            }
+        }
+
+        function updateFileUploadUIForResume() {
+            if (state.parsedData.enrollments.length > 0) {
+                const fileTypes = ['enrollments', 'courses', 'users', 'bots'];
+                fileTypes.forEach(key => {
+                    const dropZone = document.getElementById(`drop-zone-${key}`);
+                    const nameEl = document.getElementById(`${key}-file-name`);
+
+                    dropZone.classList.add('bg-slate-100');
+                    dropZone.style.pointerEvents = 'none';
+                    nameEl.textContent = `Loaded (${state.parsedData[key].length} records)`;
+                    nameEl.classList.add('text-green-600');
+                });
+
+                dom.nextStep1Btn.disabled = false;
+
+                // Add resume note if not already present
+                if (!document.getElementById('resume-note')) {
+                    const resumeNote = document.createElement('div');
+                    resumeNote.id = 'resume-note';
+                    resumeNote.className = 'mt-4 p-3 bg-blue-50 text-blue-700 rounded-md';
+                    resumeNote.innerHTML = '<strong>Resuming from saved data.</strong> Your CSV data has been restored from the previous session.';
+                    document.getElementById('step1').querySelector('.mt-8').before(resumeNote);
+                }
+            }
+        }
+
+        function renderRoleSelection() {
+            const roleColumn = state.columnMap['enrollment_role'];
+            const allRoles = [...new Set(state.parsedData.enrollments.map(e => e[roleColumn]).filter(Boolean))].sort();
+            dom.roleSelectionContainer.innerHTML = allRoles.map(role =>
+                `<div><label><input type="checkbox" value="${role}" class="mr-2">${role}</label></div>`
+            ).join('');
+        }
+
+        function restoreColumnMappingSelections() {
+            Object.entries(state.columnMap).forEach(([key, value]) => {
+                const select = document.getElementById(`map-${key}`);
+                if (select) select.value = value;
+            });
+        }
+
+        function restoreRoleSelections() {
+            state.instructorRoles.forEach(role => {
+                const checkbox = dom.roleSelectionContainer.querySelector(`input[value="${role}"]`);
+                if (checkbox) checkbox.checked = true;
+            });
+        }
+
+        function renderBotDropdown() {
+            dom.botAssignmentDropdown.innerHTML = state.botList.map(bot => {
+                const botName = bot[state.columnMap.bot_name];
+                const botId = bot[state.columnMap.bot_id];
+                return `<option value="${botId}">${botName} (${botId})</option>`;
+            }).join('');
+        }
+
+        function renderJsonOutput() {
+            dom.jsonOutputContainer.innerHTML = '';
+            Object.entries(state.assignments).forEach(([botId, items]) => {
+                const bot = state.botList.find(b => b[state.columnMap.bot_id] === botId);
+                const botDisplayName = bot ? `${bot[state.columnMap.bot_name]} (${botId})` : botId;
+                const urls = [...new Set(items.map(item => `https://courseroom.capella.edu/courses/${item.course_id}`))];
+                const jsonString = JSON.stringify(urls, null, 2);
+                const safeFilename = botId.replace(/[^a-zA-Z0-9._-]/g, '_') + '.json';
+                const card = document.createElement('div');
+                card.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-semibold">${botDisplayName}</h3>
+                        <button class="download-single-btn bg-blue-500 text-white text-sm py-1 px-3 rounded hover:bg-blue-600" data-bot-id="${botId}" data-filename="${safeFilename}">Download</button>
+                    </div>
+                    <textarea readonly class="w-full h-40 p-2 border rounded-md">${jsonString}</textarea>`;
+                dom.jsonOutputContainer.appendChild(card);
+            });
+        }
+
+        // --- File Handling ---
+        Object.entries(dom.fileInputs).forEach(([key, input]) => {
+            const dropZone = document.getElementById(`drop-zone-${key}`);
+            dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+            dropZone.addEventListener('drop', e => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                if (e.dataTransfer.files.length) {
+                    input.files = e.dataTransfer.files;
+                    handleFileSelect({ target: input }, key);
+                }
+            });
+            input.addEventListener('change', e => handleFileSelect(e, key));
+        });
+
+        function handleFileSelect(event, key) {
+            const file = event.target.files[0];
+            const nameEl = document.getElementById(`${key}-file-name`);
+            if (file) {
+                state.files[key] = file;
+                nameEl.textContent = file.name;
+            }
+            dom.nextStep1Btn.disabled = !Object.values(state.files).every(f => f);
+        }
+
+        // --- CSV Parsing & Data Processing ---
+        function parseCsvFile(file) {
+            return new Promise((resolve, reject) => {
+                if (!file) return reject(new Error("A file was not provided for parsing."));
+                Papa.parse(file, { header: true, skipEmptyLines: true, complete: r => r.errors.length ? reject(new Error(r.errors[0].message)) : resolve(r.data), error: e => reject(e) });
+            });
+        }
+        function parseCsvHeaders(file) {
+            return new Promise((resolve, reject) => {
+                if (!file) return reject(new Error("A file was not provided for parsing."));
+                Papa.parse(file, { preview: 1, complete: r => r.data.length ? resolve(r.data[0]) : reject(new Error("File is empty.")), error: e => reject(e) });
+            });
+        }
+
+        const requiredColumns = {
+            bots: [{ id: 'bot_name', label: 'Bot Name (instanceAIName)' }, { id: 'bot_id', label: 'Bot ID (instanceName)' }],
+            enrollments: [{ id: 'enrollment_user_id', label: 'User ID (user_id)' }, { id: 'enrollment_course_id', label: 'Course ID (canvas_course_id)' }, { id: 'enrollment_role', label: 'User Role (role)' }, { id: 'enrollment_status', label: 'Enrollment Status (status)' }],
+            courses: [{ id: 'course_id', label: 'Course ID (canvas_course_id)' }, { id: 'course_name', label: 'Course Name (short_name)' }],
+            users: [{ id: 'user_id', label: 'User ID (user_id)' }, { id: 'user_name', label: 'User Full Name (full_name)' }],
+        };
+
+        // Default column mappings for standard Canvas reports
+        const defaultMappings = {
+            bot_name: 'instanceAIName',
+            bot_id: 'instanceName',
+            enrollment_user_id: 'user_id',
+            enrollment_course_id: 'canvas_course_id',
+            enrollment_role: 'role',
+            enrollment_status: 'status',
+            course_id: 'canvas_course_id',
+            course_name: 'short_name',
+            user_id: 'user_id',
+            user_name: 'full_name'
+        };
+
+        function renderColumnMappings() {
+            dom.columnMappingContainer.innerHTML = '';
+            for (const [fileKey, reqs] of Object.entries(requiredColumns)) {
+                const headers = state.csvHeaders[fileKey];
+                const section = document.createElement('div');
+                section.innerHTML = `<h3 class="text-lg font-semibold capitalize">${fileKey} File</h3>`;
+                const grid = document.createElement('div');
+                grid.className = 'grid md:grid-cols-2 gap-4 border p-4 rounded-md';
+                reqs.forEach(req => {
+                    const select = document.createElement('select');
+                    select.id = `map-${req.id}`;
+                    select.className = 'mt-1 block w-full rounded-md';
+                    select.innerHTML = `<option value="">-- Select ${req.label} --</option>` + headers.map(h => `<option value="${h}">${h}</option>`).join('');
+                    // Auto-select default value if it exists in the CSV headers
+                    const defaultValue = defaultMappings[req.id];
+                    if (defaultValue && headers.includes(defaultValue)) {
+                        select.value = defaultValue;
+                    }
+                    const fieldContainer = document.createElement('div');
+                    fieldContainer.innerHTML = `<label class="block text-sm font-medium">${req.label}</label>`;
+                    fieldContainer.appendChild(select);
+                    grid.appendChild(fieldContainer);
+                });
+                section.appendChild(grid);
+                dom.columnMappingContainer.appendChild(section);
+            }
+        }
+
+        function processInitialData() {
+            const { enrollments, courses, users } = state.parsedData;
+            const map = state.columnMap;
+            const coursesMap = new Map(courses.map(c => [c[map.course_id]?.toString(), c]));
+            const usersMap = new Map(users.map(u => [u[map.user_id]?.toString(), u]));
+
+            state.unassignedEnrollments = enrollments
+                .filter(e => state.instructorRoles.includes(e[map.enrollment_role]) && e[map.enrollment_status]?.trim().toLowerCase() === 'active')
+                .map(enrollment => {
+                    const course = coursesMap.get(enrollment[map.enrollment_course_id]?.toString());
+                    const user = usersMap.get(enrollment[map.enrollment_user_id]?.toString());
+                    if (course && user) {
+                        return {
+                            enrollment_id: `${user[map.user_id]}-${course[map.course_id]}`,
+                            user_id: user[map.user_id],
+                            user_name: user[map.user_name],
+                            course_id: course[map.course_id],
+                            course_name: course[map.course_name],
+                        };
+                    }
+                    return null;
+                }).filter(Boolean);
+
+            if (state.unassignedEnrollments.length === 0) throw new Error("No matching active instructor enrollments found.");
+        }
+
+        function getFilteredEnrollments() {
+            const instructorFilter = state.filters.instructorName.toLowerCase();
+            const courseFilter = state.filters.courseName.toLowerCase();
+
+            return state.unassignedEnrollments.filter(item => {
+                const matchesInstructor = !instructorFilter || item.user_name.toLowerCase().includes(instructorFilter);
+                const matchesCourse = !courseFilter || item.course_name.toLowerCase().includes(courseFilter);
+                return matchesInstructor && matchesCourse;
+            });
+        }
+
+        function renderUnassignedTable() {
+            dom.unassignedTableBody.innerHTML = '';
+            const { key, order } = state.sort;
+
+            // Filter then sort
+            const filteredData = getFilteredEnrollments();
+            const sortedData = [...filteredData].sort((a, b) => {
+                const valA = a[key]?.toLowerCase() || '';
+                const valB = b[key]?.toLowerCase() || '';
+                if (valA < valB) return order === 'asc' ? -1 : 1;
+                if (valA > valB) return order === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            sortedData.forEach(item => {
+                const row = document.createElement('tr');
+                row.className = 'table-row';
+                row.dataset.id = item.enrollment_id;
+                row.innerHTML = `
+                    <td class="px-4 py-2"><input type="checkbox" class="unassigned-checkbox" value="${item.enrollment_id}"></td>
+                    <td class="px-4 py-2">${item.user_name}</td>
+                    <td class="px-4 py-2">${item.course_name}</td>
+                `;
+                dom.unassignedTableBody.appendChild(row);
+            });
+        }
+        
+        function renderAssignedGroups() {
+            dom.assignedGroupsContainer.innerHTML = '';
+            const activeBotId = dom.botAssignmentDropdown.value;
+            
+            state.botList.forEach(bot => {
+                const botId = bot[state.columnMap.bot_id];
+                const botName = bot[state.columnMap.bot_name];
+                const assigned = state.assignments[botId] || [];
+                const groupDiv = document.createElement('div');
+                groupDiv.id = `group-${botId.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                groupDiv.innerHTML = `<h4 class="font-bold">${botName} (${botId}) (${assigned.length})</h4>`;
+                
+                if (botId === activeBotId) {
+                    const list = document.createElement('ul');
+                    list.className = 'list-disc pl-5';
+                    assigned.forEach(item => {
+                        const li = document.createElement('li');
+                        li.className = 'text-sm table-row';
+                        li.innerHTML = `<input type="checkbox" class="assigned-checkbox" value="${item.enrollment_id}" data-bot-id="${botId}"> ${item.user_name} - ${item.course_name}`;
+                        li.dataset.id = item.enrollment_id;
+                        list.appendChild(li);
+                    });
+                    groupDiv.appendChild(list);
+                }
+                dom.assignedGroupsContainer.appendChild(groupDiv);
+            });
+        }
+
+        // --- Download Functions ---
+        function downloadJson(filename, jsonContent) {
+            const blob = new Blob([jsonContent], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function getJsonDataForBot(botId) {
+            const items = state.assignments[botId] || [];
+            const urls = [...new Set(items.map(item => `https://courseroom.capella.edu/courses/${item.course_id}`))];
+            return JSON.stringify(urls, null, 2);
+        }
+
+        function downloadAllJsons() {
+            const botIds = Object.keys(state.assignments).filter(botId => state.assignments[botId].length > 0);
+            if (botIds.length === 0) return;
+
+            botIds.forEach((botId, index) => {
+                setTimeout(() => {
+                    const jsonContent = getJsonDataForBot(botId);
+                    const safeFilename = botId.replace(/[^a-zA-Z0-9._-]/g, '_') + '.json';
+                    downloadJson(safeFilename, jsonContent);
+                }, index * 200); // 200ms delay between downloads to prevent browser blocking
+            });
+        }
+
+        // --- Save Run Function (Mark as Completed) ---
+        async function saveRun() {
+            const jsonData = {};
+            Object.entries(state.assignments).forEach(([botId, items]) => {
+                const urls = [...new Set(items.map(item =>
+                    `https://courseroom.capella.edu/courses/${item.course_id}`
+                ))];
+                jsonData[botId] = urls;
+            });
+
+            try {
+                const response = await fetch(`/api/runs/${state.currentRunId}/complete`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jsonData })
+                });
+
+                if (response.ok) {
+                    showToast('Run completed and saved!', false);
+                    // Disable save button to prevent duplicate saves
+                    document.getElementById('saveRunBtn').disabled = true;
+                    document.getElementById('saveRunBtn').classList.add('opacity-50', 'cursor-not-allowed');
+                    document.getElementById('saveRunBtn').textContent = 'Completed';
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to save');
+                }
+            } catch (e) {
+                showToast('Error saving run: ' + e.message, true);
+            }
+        }
+
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', loadRunHistory);
+        dom.startNewRunBtn.addEventListener('click', async () => {
+            const runName = dom.runNameInput.value.trim();
+            if (!runName) return showMessage('Please provide a name for this run.', true, dom.runNameMessage);
+            hideMessage(dom.runNameMessage);
+
+            // Create run in database immediately
+            try {
+                const response = await fetch('/api/runs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ runName })
+                });
+
+                if (response.status === 409) {
+                    return showMessage('A run with this name already exists.', true, dom.runNameMessage);
+                }
+
+                if (!response.ok) throw new Error('Failed to create run');
+
+                const result = await response.json();
+                state.currentRunId = result.id;
+                state.currentRunName = runName;
+                navigateToStep(1);
+
+            } catch (error) {
+                showMessage('Failed to create run: ' + error.message, true, dom.runNameMessage);
+            }
+        });
+
+        dom.prevStep1Btn.addEventListener('click', () => navigateToStep(0));
+        dom.nextStep1Btn.addEventListener('click', async () => {
+            // If resuming with data already loaded, skip parsing
+            if (state.isResuming && state.parsedData.enrollments.length > 0) {
+                renderColumnMappings();
+                if (Object.keys(state.columnMap).length > 0) {
+                    restoreColumnMappingSelections();
+                }
+                navigateToStep(2);
+                return;
+            }
+
+            dom.loading.classList.remove('hidden');
+            try {
+                const data = await Promise.all(Object.values(state.files).map(f => parseCsvHeaders(f)));
+                ['enrollments', 'courses', 'users', 'bots'].forEach((key, i) => state.csvHeaders[key] = data[i]);
+                renderColumnMappings();
+                navigateToStep(2);
+            } catch (e) { showMessage(e.message, true); navigateToStep(1); }
+            finally { dom.loading.classList.add('hidden'); }
+        });
+        
+        dom.prevStep2Btn.addEventListener('click', () => navigateToStep(1));
+        dom.nextStep2Btn.addEventListener('click', async () => {
+            state.columnMap = {};
+            let allMapped = true;
+            for (const [fileKey, reqs] of Object.entries(requiredColumns)) {
+                for (const req of reqs) {
+                    const val = document.getElementById(`map-${req.id}`).value;
+                    if (val) state.columnMap[req.id] = val; else allMapped = false;
+                }
+            }
+            if (!allMapped) return showMessage("Please map all required fields.", true, dom.mappingMessage);
+
+            // If data already loaded (from resume), skip file upload and parsing
+            if (state.parsedData.enrollments.length > 0) {
+                renderRoleSelection();
+                if (state.instructorRoles.length > 0) {
+                    restoreRoleSelections();
+                }
+                await immediateSave();
+                navigateToStep(3);
+                return;
+            }
+
+            dom.loading.classList.remove('hidden');
+            try {
+                // Upload CSV files to server
+                await uploadCsvFiles();
+
+                // Parse CSV files locally
+                const data = await Promise.all(Object.values(state.files).map(f => parseCsvFile(f)));
+                ['enrollments', 'courses', 'users', 'bots'].forEach((key, i) => state.parsedData[key] = data[i]);
+
+                // Also store headers for later use
+                const headers = await Promise.all(Object.values(state.files).map(f => parseCsvHeaders(f)));
+                ['enrollments', 'courses', 'users', 'bots'].forEach((key, i) => state.csvHeaders[key] = headers[i]);
+
+                const roleColumn = state.columnMap['enrollment_role'];
+                const allRoles = [...new Set(state.parsedData.enrollments.map(e => e[roleColumn]).filter(Boolean))].sort();
+                dom.roleSelectionContainer.innerHTML = allRoles.map(role => `<div><label><input type="checkbox" value="${role}" class="mr-2">${role}</label></div>`).join('');
+
+                // Auto-save metadata (CSV files already uploaded)
+                await immediateSave();
+                navigateToStep(3);
+            } catch (e) { showMessage(e.message, true); navigateToStep(2); }
+            finally { dom.loading.classList.add('hidden'); }
+        });
+
+        dom.prevStep3Btn.addEventListener('click', () => navigateToStep(2));
+        dom.nextStep3Btn.addEventListener('click', async () => {
+            state.instructorRoles = Array.from(dom.roleSelectionContainer.querySelectorAll('input:checked')).map(cb => cb.value);
+            if (!state.instructorRoles.length) return showMessage("Please select at least one instructor role.", true, dom.roleMessage);
+
+            try {
+                // If data already loaded (from resume), skip re-processing
+                if (state.unassignedEnrollments.length > 0) {
+                    renderBotDropdown();
+                    renderUnassignedTable();
+                    renderAssignedGroups();
+                    await immediateSave();
+                    navigateToStep(4);
+                    return;
+                }
+
+                processInitialData();
+                // Use bot objects, not just names
+                state.botList = state.parsedData.bots.map(b => ({
+                    [state.columnMap.bot_name]: b[state.columnMap.bot_name],
+                    [state.columnMap.bot_id]: b[state.columnMap.bot_id]
+                })).sort((a, b) => a[state.columnMap.bot_name].localeCompare(b[state.columnMap.bot_name]));
+
+                dom.botAssignmentDropdown.innerHTML = state.botList.map(bot => {
+                    const botName = bot[state.columnMap.bot_name];
+                    const botId = bot[state.columnMap.bot_id];
+                    return `<option value="${botId}">${botName} (${botId})</option>`;
+                }).join('');
+
+                renderUnassignedTable();
+                renderAssignedGroups();
+
+                // Auto-save after processing data
+                await immediateSave();
+                navigateToStep(4);
+            } catch (e) { showMessage(e.message, true); }
+        });
+
+        dom.prevStep4Btn.addEventListener('click', () => navigateToStep(3));
+        dom.nextStep4Btn.addEventListener('click', () => {
+            navigateToStep(5);
+            dom.jsonOutputContainer.innerHTML = '';
+            Object.entries(state.assignments).forEach(([botId, items]) => {
+                const bot = state.botList.find(b => b[state.columnMap.bot_id] === botId);
+                const botDisplayName = bot ? `${bot[state.columnMap.bot_name]} (${botId})` : botId;
+                const urls = [...new Set(items.map(item => `https://courseroom.capella.edu/courses/${item.course_id}`))]
+                const jsonString = JSON.stringify(urls, null, 2);
+                const safeFilename = botId.replace(/[^a-zA-Z0-9._-]/g, '_') + '.json';
+                const card = document.createElement('div');
+                card.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-semibold">${botDisplayName}</h3>
+                        <button class="download-single-btn bg-blue-500 text-white text-sm py-1 px-3 rounded hover:bg-blue-600" data-bot-id="${botId}" data-filename="${safeFilename}">Download</button>
+                    </div>
+                    <textarea readonly class="w-full h-40 p-2 border rounded-md">${jsonString}</textarea>`;
+                dom.jsonOutputContainer.appendChild(card);
+            });
+        });
+        
+        dom.prevStep5Btn.addEventListener('click', () => navigateToStep(4));
+        dom.startOverBtn.addEventListener('click', () => window.location.reload());
+
+        // Download buttons
+        document.getElementById('downloadAllBtn').addEventListener('click', downloadAllJsons);
+
+        // Event delegation for individual download buttons (they're dynamically created)
+        dom.jsonOutputContainer.addEventListener('click', e => {
+            if (e.target.classList.contains('download-single-btn')) {
+                const botId = e.target.dataset.botId;
+                const filename = e.target.dataset.filename;
+                const jsonContent = getJsonDataForBot(botId);
+                downloadJson(filename, jsonContent);
+            }
+        });
+
+        // Save Run button
+        document.getElementById('saveRunBtn').addEventListener('click', saveRun);
+
+        // Assignment Logic
+        document.getElementById('select-all-unassigned').addEventListener('change', e => {
+            dom.unassignedTableBody.querySelectorAll('.unassigned-checkbox').forEach(cb => {
+                cb.checked = e.target.checked;
+            });
+        });
+
+        dom.assignBtn.addEventListener('click', () => {
+            const selectedBotId = dom.botAssignmentDropdown.value;
+            if (!selectedBotId) return showMessage("Please select a bot to assign to.", true);
+
+            const selectedIds = new Set(
+                Array.from(dom.unassignedTableBody.querySelectorAll('.unassigned-checkbox:checked'))
+                .map(cb => cb.value)
+            );
+
+            if (!selectedIds.size) return;
+
+            if (!state.assignments[selectedBotId]) state.assignments[selectedBotId] = [];
+            const toMove = state.unassignedEnrollments.filter(item => selectedIds.has(item.enrollment_id));
+            state.assignments[selectedBotId].push(...toMove);
+            state.unassignedEnrollments = state.unassignedEnrollments.filter(item => !selectedIds.has(item.enrollment_id));
+
+            document.getElementById('select-all-unassigned').checked = false;
+            // Clear filters after assignment for next batch
+            state.filters.instructorName = '';
+            state.filters.courseName = '';
+            document.getElementById('filter-instructor-name').value = '';
+            document.getElementById('filter-course-name').value = '';
+            renderUnassignedTable();
+            renderAssignedGroups();
+
+            // Auto-save assignments (debounced)
+            debouncedAutoSave();
+        });
+
+        dom.unassignBtn.addEventListener('click', () => {
+            const activeBotId = dom.botAssignmentDropdown.value;
+            const selectedIds = new Set(
+                Array.from(dom.assignedGroupsContainer.querySelectorAll(`.assigned-checkbox:checked`))
+                .filter(cb => cb.dataset.botId === activeBotId)
+                .map(cb => cb.value)
+            );
+
+            if(!selectedIds.size) return;
+
+            const toMove = state.assignments[activeBotId].filter(item => selectedIds.has(item.enrollment_id));
+            state.unassignedEnrollments.push(...toMove);
+            state.assignments[activeBotId] = state.assignments[activeBotId].filter(item => !selectedIds.has(item.enrollment_id));
+
+            renderUnassignedTable();
+            renderAssignedGroups();
+
+            // Auto-save assignments (debounced)
+            debouncedAutoSave();
+        });
+        
+        dom.botAssignmentDropdown.addEventListener('change', renderAssignedGroups);
+        document.querySelector('#step4 thead').addEventListener('click', e => {
+            if(e.target.tagName === 'TH') {
+                const key = e.target.dataset.sort;
+                state.sort.order = state.sort.key === key && state.sort.order === 'asc' ? 'desc' : 'asc';
+                state.sort.key = key;
+                renderUnassignedTable();
+            }
+        });
+
+        // Filter inputs for unassigned instructors
+        document.getElementById('filter-instructor-name').addEventListener('input', e => {
+            state.filters.instructorName = e.target.value;
+            document.getElementById('select-all-unassigned').checked = false;
+            renderUnassignedTable();
+        });
+
+        document.getElementById('filter-course-name').addEventListener('input', e => {
+            state.filters.courseName = e.target.value;
+            document.getElementById('select-all-unassigned').checked = false;
+            renderUnassignedTable();
+        });
+
+        // Warn users about leaving during active work (Steps 1-4)
+        window.addEventListener('beforeunload', (e) => {
+            if (state.currentRunId && state.currentStep > 0 && state.currentStep < 5) {
+                e.preventDefault();
+                e.returnValue = 'You have unsaved progress. Are you sure you want to leave?';
+                return e.returnValue;
+            }
+        });
+
+    </script>
+</body>
+</html>

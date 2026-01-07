@@ -1,0 +1,23 @@
+{
+  "project": {
+    "name": "Praxis Auto Sorter",
+    "description": "Local web app for quarterly Praxis bot provisioning at Capella University"
+  },
+  "context": {
+    "include": [
+      "*.js",
+      "*.html",
+      "*.py",
+      "*.json",
+      "*.md",
+      "memory-bank/**"
+    ],
+    "exclude": [
+      "node_modules/**",
+      "*.csv",
+      "*.db",
+      "fall2025/**",
+      "provisioning_csv_*/**"
+    ]
+  }
+}
