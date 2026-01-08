@@ -31,7 +31,7 @@ const upload = multer({ storage });
 
 // Serve static files from the current directory
 app.use(express.static(__dirname));
-app.use(express.json()); // No longer need large limit - CSV files uploaded separately
+app.use(express.json({ limit: '10mb' })); // Allow larger payloads for assignments/botList
 
 // Serve the main HTML file
 app.get('/', (req, res) => {
@@ -108,6 +108,9 @@ app.put('/api/runs/:id', async (req, res) => {
         );
 
         const updated = await db.get('SELECT updatedAt FROM provisioning_runs WHERE id = ?', id);
+        if (!updated) {
+            return res.status(404).json({ error: 'Run not found' });
+        }
         res.json({ success: true, updatedAt: updated.updatedAt });
     } catch (error) {
         console.error('Failed to update run:', error);
