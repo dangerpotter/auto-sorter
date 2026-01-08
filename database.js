@@ -1,26 +1,101 @@
-const sqlite3 = require('sqlite3').verbose();
-const { open } = require('sqlite');
+const initSqlJs = require('sql.js');
+const fs = require('fs');
+const path = require('path');
 
-// This function will open the database connection
-async function openDb() {
-    return open({
-        filename: './praxis_database.db',
-        driver: sqlite3.Database
-    });
+const DB_PATH = path.join(__dirname, 'praxis_database.db');
+
+let db = null;
+let SQL = null;
+
+// Save database to disk
+function saveDb() {
+    if (db) {
+        const data = db.export();
+        const buffer = Buffer.from(data);
+        fs.writeFileSync(DB_PATH, buffer);
+    }
 }
 
-// This function will set up the database tables
+// Initialize and return the database
+async function openDb() {
+    if (db) {
+        return createDbWrapper();
+    }
+
+    SQL = await initSqlJs();
+
+    // Load existing database or create new one
+    if (fs.existsSync(DB_PATH)) {
+        const fileBuffer = fs.readFileSync(DB_PATH);
+        db = new SQL.Database(fileBuffer);
+    } else {
+        db = new SQL.Database();
+    }
+
+    return createDbWrapper();
+}
+
+// Create a wrapper with async-like interface for compatibility with server.js
+function createDbWrapper() {
+    return {
+        // Execute a query that modifies data (INSERT, UPDATE, DELETE)
+        run(sql, ...params) {
+            try {
+                db.run(sql, params);
+                saveDb();
+                // Return lastID for INSERT operations
+                const lastID = db.exec("SELECT last_insert_rowid()")[0]?.values[0][0];
+                const changes = db.getRowsModified();
+                return { lastID, changes };
+            } catch (err) {
+                err.code = err.message.includes('UNIQUE constraint') ? 'SQLITE_CONSTRAINT' : err.code;
+                throw err;
+            }
+        },
+
+        // Get all matching rows
+        all(sql, ...params) {
+            const stmt = db.prepare(sql);
+            stmt.bind(params);
+            const results = [];
+            while (stmt.step()) {
+                results.push(stmt.getAsObject());
+            }
+            stmt.free();
+            return results;
+        },
+
+        // Get a single row
+        get(sql, ...params) {
+            const stmt = db.prepare(sql);
+            stmt.bind(params);
+            let result = null;
+            if (stmt.step()) {
+                result = stmt.getAsObject();
+            }
+            stmt.free();
+            return result;
+        },
+
+        // Close is a no-op since we keep DB in memory
+        close() {
+            // Save on close just to be safe
+            saveDb();
+        }
+    };
+}
+
+// Setup the database schema
 async function setupDatabase() {
-    const db = await openDb();
+    const dbWrapper = await openDb();
 
     // Check if table exists and get its columns
-    const tableInfo = await db.all("PRAGMA table_info(provisioning_runs)");
+    const tableInfo = dbWrapper.all("PRAGMA table_info(provisioning_runs)");
     const existingColumns = tableInfo.map(col => col.name);
 
     if (existingColumns.length === 0) {
         // Table doesn't exist - create with full schema
-        // CSV files are stored on disk in runs/<id>/ folder, not in database
-        await db.run(`
+        dbWrapper.run(`
             CREATE TABLE IF NOT EXISTS provisioning_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 runName TEXT NOT NULL UNIQUE,
@@ -28,15 +103,11 @@ async function setupDatabase() {
                 updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
                 status TEXT NOT NULL DEFAULT 'in_progress',
                 currentStep INTEGER NOT NULL DEFAULT 0,
-
-                -- Step 2-4 state (small JSON, CSV files stored on disk)
                 columnMap TEXT,
                 instructorRoles TEXT,
                 unassignedEnrollments TEXT,
                 assignments TEXT,
                 botList TEXT,
-
-                -- Final output
                 jsonData TEXT
             )
         `);
@@ -56,18 +127,16 @@ async function setupDatabase() {
 
         for (const col of newColumns) {
             if (!existingColumns.includes(col.name)) {
-                await db.run(`ALTER TABLE provisioning_runs ADD COLUMN ${col.name} ${col.definition}`);
+                dbWrapper.run(`ALTER TABLE provisioning_runs ADD COLUMN ${col.name} ${col.definition}`);
                 console.log(`Added column: ${col.name}`);
             }
         }
 
         // Mark existing runs as completed (they were saved at Step 5)
-        await db.run(`UPDATE provisioning_runs SET status = 'completed', currentStep = 5 WHERE status IS NULL OR status = ''`);
+        dbWrapper.run(`UPDATE provisioning_runs SET status = 'completed', currentStep = 5 WHERE status IS NULL OR status = ''`);
 
         console.log('Database migration complete.');
     }
-
-    await db.close();
 }
 
 // Run setup
